@@ -26,23 +26,29 @@ AZURE_ENDPOINT = os.getenv("AZURE_ANTHROPIC_URL")
 AZURE_KEY = os.getenv("AZURE_ANTHROPIC_KEY")
 DEPLOYMENT_NAME = "claude-sonnet-4-6"
 
-SYSTEM_PROMPT = """You are a data visualization expert. Given JSON data and a user question, generate a recharts JSX snippet.
+SYSTEM_PROMPT = """You are a data visualization expert. Given an Apollo GraphQL cache snapshot and a user question, generate a recharts JSX snippet.
 
 CRITICAL RULES:
-- A variable called `data` is ALREADY defined and available at runtime. It is an array of objects with the EXACT fields from the JSON I provide. USE IT DIRECTLY.
-- NEVER define your own data array. NEVER write `const chartData = [...]` or `const data = [...]`. The data is already there.
-- You MAY create derived variables from `data`, for example: `const top5 = data.sort((a,b) => b.passed - a.passed).slice(0,5)`
+- A variable called `data` is ALREADY defined and available at runtime. It is an Apollo cache object (NOT an array). USE IT DIRECTLY.
+- The cache has a `ROOT_QUERY` key containing query results. Each query result has `__data` (the actual data) and `__timestamp`.
+- You MUST extract the relevant array or object from the cache before charting. For example: `const programs = data.ROOT_QUERY["allProgramFirstTestNumber:..."].__data;`
+- NEVER define your own data arrays with hardcoded values. NEVER write `const chartData = [{...}, ...]`. Always derive from `data`.
 - Return ONLY a JSX code block (```jsx ... ```) followed by a brief explanation
 - Use recharts components: ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 - Wrap everything in <ResponsiveContainer width="100%" height={400}>
 - Use nice colors from this palette: #8884d8, #82ca9d, #ffc658, #ff7300, #0088fe, #00c49f, #ffbb28, #ff8042
 - Do NOT import anything — all components are available as globals
 - The JSX must be a single expression, OR variable declarations followed by a JSX expression in parentheses
+- When accessing cache keys that contain JSON parameters (e.g. `allProgramFirstTestNumber:{"input":{...}}`), use the EXACT key string provided in the schema description.
 
-EXAMPLE using `data` directly (for a bar chart of passed vs failed):
+EXAMPLE extracting from cache and charting:
 ```jsx
-<ResponsiveContainer width="100%" height={400}>
-  <BarChart data={data}>
+const queryKey = Object.keys(data.ROOT_QUERY).find(k => k.startsWith("allProgramFirstTestNumber"));
+const programs = queryKey ? data.ROOT_QUERY[queryKey].__data : [];
+const top10 = [...programs].sort((a, b) => b.passed - a.passed).slice(0, 10);
+
+(<ResponsiveContainer width="100%" height={400}>
+  <BarChart data={top10}>
     <CartesianGrid strokeDasharray="3 3" />
     <XAxis dataKey="programname" />
     <YAxis />
@@ -50,22 +56,6 @@ EXAMPLE using `data` directly (for a bar chart of passed vs failed):
     <Legend />
     <Bar dataKey="passed" fill="#82ca9d" />
     <Bar dataKey="failed" fill="#ff7300" />
-  </BarChart>
-</ResponsiveContainer>
-```
-
-EXAMPLE with derived data (top 5 by pass rate):
-```jsx
-const sorted = [...data].sort((a, b) => b.passRate - a.passRate).slice(0, 5);
-
-(<ResponsiveContainer width="100%" height={500}>
-  <BarChart data={sorted}>
-    <CartesianGrid strokeDasharray="3 3" />
-    <XAxis dataKey="programname" />
-    <YAxis />
-    <Tooltip />
-    <Legend />
-    <Bar dataKey="passRate" fill="#8884d8" />
   </BarChart>
 </ResponsiveContainer>)
 ```
@@ -79,7 +69,7 @@ class MessageItem(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    data: list[dict]
+    data: dict
     messages: list[MessageItem] = []
 
 
@@ -117,19 +107,40 @@ def chat(req: ChatRequest):
     if not AZURE_ENDPOINT or not AZURE_KEY:
         raise HTTPException(status_code=500, detail="Azure Anthropic credentials not configured")
 
-    # Dynamically extract schema from the data
-    fields = list(req.data[0].keys()) if req.data else []
-    sample = req.data[0] if req.data else {}
+    import json
 
-    user_message = f"""The `data` variable is an array of {len(req.data)} objects.
+    # Build a schema summary of the Apollo cache for the LLM
+    root_query = req.data.get("ROOT_QUERY", {})
+    schema_lines = []
+    sample_data = {}
+    for key, value in root_query.items():
+        if key == "__typename":
+            continue
+        if isinstance(value, dict) and "__data" in value:
+            d = value["__data"]
+            if isinstance(d, list):
+                schema_lines.append(f'- `{key}`: array of {len(d)} items')
+                if d:
+                    schema_lines.append(f'  Fields: {list(d[0].keys()) if isinstance(d[0], dict) else "primitive"}')
+                    schema_lines.append(f'  Sample: {json.dumps(d[0], default=str)[:300]}')
+                    sample_data[key] = d[:2]
+            elif isinstance(d, dict):
+                schema_lines.append(f'- `{key}`: object with keys {list(d.keys())}')
+                sample_data[key] = d
+            else:
+                schema_lines.append(f'- `{key}`: {type(d).__name__} = {str(d)[:100]}')
+        elif isinstance(value, dict):
+            schema_lines.append(f'- `{key}`: object with keys {list(value.keys())}')
 
-Available fields: {fields}
+    schema_description = "\n".join(schema_lines)
 
-Sample record (first item):
-{sample}
+    user_message = f"""The `data` variable is an Apollo GraphQL cache object. Access data via `data.ROOT_QUERY["<queryKey>"].__data`.
 
-Full data:
-{req.data}
+Available queries in ROOT_QUERY:
+{schema_description}
+
+Sample data (first 2 records per query):
+{json.dumps(sample_data, indent=2, default=str)[:3000]}
 
 User question: {req.question}"""
 

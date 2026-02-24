@@ -23,7 +23,7 @@ export default function ChatPage() {
   const loading = useSelector((s: RootState) => s.chat.loading)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const getData = (): Record<string, unknown>[] => {
+  const getData = (): Record<string, unknown> => {
     const stored = localStorage.getItem('chartai-json-data')
     if (stored) {
       try {
@@ -32,7 +32,7 @@ export default function ChatPage() {
         // fall through
       }
     }
-    return rawDataFallback as Record<string, unknown>[]
+    return rawDataFallback as Record<string, unknown>
   }
 
   const data = getData()

@@ -14,7 +14,7 @@ declare global {
 
 export function renderChart(
   jsxString: string,
-  data: Record<string, unknown>[]
+  data: Record<string, unknown>
 ): React.ReactElement | null {
   if (!window.Babel) {
     throw new Error("Babel standalone not loaded");
@@ -45,16 +45,33 @@ export function renderChart(
 
     const lines = cleaned.split("\n");
 
-    // Find the last line that starts a const/let/var declaration
+    // Find the last TOP-LEVEL const/let/var declaration.
+    // Track brace depth so we skip declarations nested inside arrow functions.
     let lastDeclLine = -1;
+    let scanBrace = 0;
+    let scanParen = 0;
+    let scanBracket = 0;
     for (let i = 0; i < lines.length; i++) {
-      if (/^\s*(const|let|var)\s/.test(lines[i])) {
+      // Check for top-level declaration BEFORE updating depths for this line
+      if (
+        scanBrace === 0 &&
+        scanParen === 0 &&
+        scanBracket === 0 &&
+        /^\s*(const|let|var)\s/.test(lines[i])
+      ) {
         lastDeclLine = i;
+      }
+      for (const ch of lines[i]) {
+        if (ch === "{") scanBrace++;
+        if (ch === "}") scanBrace--;
+        if (ch === "(") scanParen++;
+        if (ch === ")") scanParen--;
+        if (ch === "[") scanBracket++;
+        if (ch === "]") scanBracket--;
       }
     }
 
-    // Now find where that declaration ends (look for a line ending with ; or
-    // a closing ) or } that completes the statement)
+    // Now find where that last top-level declaration ends
     let declEndLine = lastDeclLine;
     let braceDepth = 0;
     let parenDepth = 0;
@@ -84,9 +101,11 @@ export function renderChart(
     if (jsxPart) {
       // Remove wrapping parens if present: (\n<JSX>\n) -> <JSX>
       const unwrapped = jsxPart.replace(/^\(\s*/, "").replace(/\s*\)\s*;?\s*$/, "");
+      // If the JSX part already starts with "return", don't add another
+      const returnPrefix = /^\s*return\s/.test(unwrapped) ? "" : "return ";
       wrappedCode = `(function() {
 ${declarationPart}
-return (${unwrapped});
+${returnPrefix}(${unwrapped});
 })()`;
     } else {
       wrappedCode = `(function() {

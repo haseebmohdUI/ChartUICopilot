@@ -33,7 +33,7 @@ function ChartRenderer({
   data,
 }: {
   jsx: string
-  data: Record<string, unknown>[]
+  data: Record<string, unknown>
 }) {
   const result = useMemo(() => {
     try {
@@ -62,7 +62,7 @@ export default function ChatMessage({
   data,
 }: {
   message: Message
-  data: Record<string, unknown>[]
+  data: Record<string, unknown>
 }) {
   const isUser = message.role === 'user'
 
@@ -80,10 +80,10 @@ export default function ChatMessage({
         </AvatarFallback>
       </Avatar>
       <div
-        className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+        className={`min-w-0 rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
             ? 'max-w-[70%] bg-blue-500 text-white'
-            : `bg-zinc-100 text-zinc-800 ${message.jsx ? 'max-w-full' : 'max-w-[70%]'}`
+            : `bg-zinc-100 text-zinc-800 ${message.jsx ? 'max-w-full w-full' : 'max-w-[70%]'}`
         }`}
       >
         {message.content && (
@@ -93,7 +93,7 @@ export default function ChatMessage({
         )}
         {message.jsx && (
           <ChartErrorBoundary>
-            <div className="mt-3 rounded-lg bg-white p-4" style={{ width: '100%', height: 420 }}>
+            <div className="mt-3 rounded-lg bg-white p-4" style={{ width: '100%', minHeight: 420 }}>
               <ChartRenderer jsx={message.jsx} data={data} />
             </div>
           </ChartErrorBoundary>
