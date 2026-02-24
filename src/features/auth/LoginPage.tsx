@@ -21,12 +21,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-700 p-4">
-      <Card className="w-full max-w-md border-zinc-500/30 bg-zinc-600">
+    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
+      <Card className="w-full max-w-md border-zinc-200 bg-white shadow-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-500/40">
+          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100">
             <svg
-              className="h-6 w-6 text-zinc-200"
+              className="h-6 w-6 text-zinc-500"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -39,20 +39,20 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <CardTitle className="text-2xl font-bold text-white">
+          <CardTitle className="text-2xl font-bold text-zinc-800">
             ChartAI
           </CardTitle>
-          <p className="text-sm text-zinc-300">Sign in to continue</p>
+          <p className="text-sm text-zinc-500">Sign in to continue</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="rounded-md bg-red-800/40 px-3 py-2 text-sm text-red-200">
+              <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">
                 {error}
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-sm text-zinc-300" htmlFor="email">
+              <label className="text-sm text-zinc-600" htmlFor="email">
                 Email
               </label>
               <Input
@@ -64,12 +64,12 @@ export default function LoginPage() {
                   setEmail(e.target.value)
                   if (error) dispatch(clearError())
                 }}
-                className="border-zinc-500/40 bg-zinc-500/30 text-white placeholder:text-zinc-400"
+                className="border-zinc-300 bg-zinc-50 text-zinc-800 placeholder:text-zinc-400"
                 required
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm text-zinc-300" htmlFor="password">
+              <label className="text-sm text-zinc-600" htmlFor="password">
                 Password
               </label>
               <Input
@@ -81,16 +81,18 @@ export default function LoginPage() {
                   setPassword(e.target.value)
                   if (error) dispatch(clearError())
                 }}
-                className="border-zinc-500/40 bg-zinc-500/30 text-white placeholder:text-zinc-400"
+                className="border-zinc-300 bg-zinc-50 text-zinc-800 placeholder:text-zinc-400"
                 required
               />
             </div>
-            <Button
+            <div className="flex justify-center">
+              <Button
               type="submit"
-              className="w-full bg-white text-zinc-800 hover:bg-zinc-100"
-            >
+              className="w-50 bg-zinc-800 text-white hover:bg-zinc-700"
+              >
               Sign in
-            </Button>
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

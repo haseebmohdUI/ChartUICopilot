@@ -46,7 +46,7 @@ const chatSlice = createSlice({
       const now = new Date().toISOString()
       const title =
         action.payload.role === 'user'
-          ? action.payload.content.slice(0, 60)
+          ? action.payload.content.slice(0, 30)
           : 'New Chat'
       const conv: Conversation = {
         id: crypto.randomUUID(),

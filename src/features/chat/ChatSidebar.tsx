@@ -19,7 +19,7 @@ export default function ChatSidebar() {
   const activeId = useSelector((s: RootState) => s.chat.activeConversationId)
 
   return (
-    <aside className="flex h-screen w-[300px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-50">
+    <aside className="flex h-screen w-[315px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-100">
       {/* New Chat button */}
       <div className="p-3">
         <Button
@@ -50,19 +50,19 @@ export default function ChatSidebar() {
       <ScrollArea className="flex-1">
         <div className="space-y-1 p-3">
           {conversations.length === 0 ? (
-            <p className="text-xs text-zinc-400">No conversations yet</p>
+            <p className="text-sm text-zinc-400">No conversations yet</p>
           ) : (
             conversations.map((conv) => (
               <div
                 key={conv.id}
-                className={`group flex items-center rounded-lg px-3 py-2 text-sm cursor-pointer ${
+                className={`group flex items-center overflow-hidden rounded-sm px-2.5 py-1.5 text-xs cursor-pointer ${
                   conv.id === activeId
                     ? 'bg-zinc-200 text-zinc-900'
                     : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
                 }`}
                 onClick={() => dispatch(setActiveConversation(conv.id))}
               >
-                <span className="flex-1 truncate">{conv.title}</span>
+                <span className="min-w-0 flex-1 truncate">{conv.title}</span>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()

@@ -83,7 +83,7 @@ export default function ChatMessage({
         className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
             ? 'max-w-[70%] bg-blue-500 text-white'
-            : `bg-zinc-100 text-zinc-800 ${message.jsx ? 'max-w-[90%]' : 'max-w-[70%]'}`
+            : `bg-zinc-100 text-zinc-800 ${message.jsx ? 'max-w-full' : 'max-w-[70%]'}`
         }`}
       >
         {message.content && (
