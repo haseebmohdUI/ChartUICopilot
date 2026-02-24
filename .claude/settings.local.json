@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(echo:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(pip install:*)",
+      "Bash(pip3 install:*)",
+      "Bash(test:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
