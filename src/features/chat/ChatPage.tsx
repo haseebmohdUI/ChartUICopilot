@@ -1,13 +1,26 @@
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect } from 'react'
+import { useSelector, useDispatch } from 'react-redux'
+import type { RootState } from '@/app/store'
+import {
+  startConversation,
+  addMessage,
+  setLoading,
+  type Message,
+} from './chatSlice'
 import ChatSidebar from './ChatSidebar'
-import ChatMessage, { type Message } from './ChatMessage'
+import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import rawDataFallback from '../../../rawData.json'
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(false)
+  const dispatch = useDispatch()
+  const activeId = useSelector((s: RootState) => s.chat.activeConversationId)
+  const conversation = useSelector((s: RootState) =>
+    s.chat.conversations.find((c) => c.id === activeId),
+  )
+  const messages = conversation?.messages ?? []
+  const loading = useSelector((s: RootState) => s.chat.loading)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const getData = (): Record<string, unknown>[] => {
@@ -30,14 +43,27 @@ export default function ChatPage() {
       role: 'user',
       content,
     }
-    setMessages((prev) => [...prev, userMsg])
-    setLoading(true)
+
+    // If no active conversation, start a new one; otherwise append
+    if (!activeId) {
+      dispatch(startConversation(userMsg))
+    } else {
+      dispatch(addMessage(userMsg))
+    }
+
+    dispatch(setLoading(true))
+
+    // Build history for the backend (exclude jsx, map chartagent → assistant)
+    const history = messages.map((m) => ({
+      role: m.role === 'chartagent' ? 'assistant' : m.role,
+      content: m.content,
+    }))
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: content, data }),
+        body: JSON.stringify({ question: content, data, messages: history }),
       })
 
       if (!res.ok) {
@@ -45,27 +71,23 @@ export default function ChatPage() {
       }
 
       const body = await res.json()
-      const assistantMsg: Message = {
+      const agentMsg: Message = {
         id: crypto.randomUUID(),
-        role: 'assistant',
+        role: 'chartagent',
         content: body.text || '',
         jsx: body.jsx || undefined,
       }
-      setMessages((prev) => [...prev, assistantMsg])
+      dispatch(addMessage(agentMsg))
     } catch (e) {
       const errorMsg: Message = {
         id: crypto.randomUUID(),
-        role: 'assistant',
+        role: 'chartagent',
         content: `Error: ${(e as Error).message}`,
       }
-      setMessages((prev) => [...prev, errorMsg])
+      dispatch(addMessage(errorMsg))
     } finally {
-      setLoading(false)
+      dispatch(setLoading(false))
     }
-  }
-
-  const handleNewChat = () => {
-    setMessages([])
   }
 
   useEffect(() => {
@@ -73,18 +95,18 @@ export default function ChatPage() {
   }, [messages])
 
   return (
-    <div className="flex h-screen bg-zinc-700">
-      <ChatSidebar onNewChat={handleNewChat} />
+    <div className="flex h-screen bg-white">
+      <ChatSidebar />
 
-      <main className="flex flex-1 flex-col">
+      <main className="flex min-h-0 flex-1 flex-col">
         {/* Message area */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="min-h-0 flex-1">
           <div className="mx-auto max-w-3xl px-4 py-8">
             {messages.length === 0 ? (
               <div className="flex h-[60vh] flex-col items-center justify-center text-center">
-                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-600">
+                <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100">
                   <svg
-                    className="h-8 w-8 text-zinc-300"
+                    className="h-8 w-8 text-zinc-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -97,10 +119,10 @@ export default function ChatPage() {
                     />
                   </svg>
                 </div>
-                <h2 className="mb-2 text-xl font-semibold text-white">
+                <h2 className="mb-2 text-xl font-semibold text-zinc-800">
                   ChartAI
                 </h2>
-                <p className="max-w-sm text-sm text-zinc-300">
+                <p className="max-w-sm text-sm text-zinc-500">
                   Describe the data chart you'd like to create. I can generate
                   bar charts, pie charts, line charts, and more.
                 </p>
@@ -113,7 +135,7 @@ export default function ChatPage() {
                 {loading && (
                   <div className="flex gap-3">
                     <div className="h-8 w-8 shrink-0" />
-                    <div className="rounded-2xl bg-zinc-600 px-4 py-2.5 text-sm text-zinc-300">
+                    <div className="rounded-2xl bg-zinc-100 px-4 py-2.5 text-sm text-zinc-500">
                       <span className="inline-flex gap-1">
                         <span className="animate-bounce">.</span>
                         <span className="animate-bounce" style={{ animationDelay: '0.1s' }}>.</span>

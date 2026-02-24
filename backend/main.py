@@ -72,9 +72,15 @@ const sorted = [...data].sort((a, b) => b.passRate - a.passRate).slice(0, 5);
 """
 
 
+class MessageItem(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
     data: list[dict]
+    messages: list[MessageItem] = []
 
 
 class ChatResponse(BaseModel):
@@ -133,11 +139,18 @@ User question: {req.question}"""
             base_url=AZURE_ENDPOINT,
         )
 
+        # Build conversation history + current message
+        api_messages = []
+        for m in req.messages:
+            api_role = "assistant" if m.role == "chartagent" else m.role
+            api_messages.append({"role": api_role, "content": m.content})
+        api_messages.append({"role": "user", "content": user_message})
+
         response = client.messages.create(
             model=DEPLOYMENT_NAME,
             max_tokens=2048,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
+            messages=api_messages,
         )
 
         full_text = response.content[0].text

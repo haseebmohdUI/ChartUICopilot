@@ -3,12 +3,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import ReactMarkdown from 'react-markdown'
 import { renderChart } from '@/lib/renderChart'
 
-export interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  jsx?: string
-}
+import type { Message } from './chatSlice'
+export type { Message } from './chatSlice'
 
 class ChartErrorBoundary extends Component<
   { children: ReactNode },
@@ -77,7 +73,7 @@ export default function ChatMessage({
           className={
             isUser
               ? 'bg-blue-500 text-white text-sm'
-              : 'bg-zinc-500 text-zinc-100 text-sm'
+              : 'bg-zinc-200 text-zinc-600 text-sm'
           }
         >
           {isUser ? 'U' : 'AI'}
@@ -87,11 +83,11 @@ export default function ChatMessage({
         className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
           isUser
             ? 'max-w-[70%] bg-blue-500 text-white'
-            : `bg-zinc-600 text-zinc-100 ${message.jsx ? 'max-w-[90%]' : 'max-w-[70%]'}`
+            : `bg-zinc-100 text-zinc-800 ${message.jsx ? 'max-w-[90%]' : 'max-w-[70%]'}`
         }`}
       >
         {message.content && (
-          <div className="prose prose-invert prose-sm max-w-none">
+          <div className="prose prose-sm max-w-none">
             <ReactMarkdown>{message.content}</ReactMarkdown>
           </div>
         )}

@@ -25,7 +25,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   }
 
   return (
-    <div className="border-t border-zinc-600/50 bg-zinc-700 p-4">
+    <div className="border-t border-zinc-200 bg-white p-4">
       <form
         onSubmit={handleSubmit}
         className="mx-auto flex max-w-3xl items-end gap-2"
@@ -37,12 +37,12 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           placeholder="Message ChartAI..."
           disabled={disabled}
           rows={1}
-          className="flex-1 resize-none rounded-xl border border-zinc-500/40 bg-zinc-600 px-4 py-3 text-sm text-white placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none disabled:opacity-50"
+          className="flex-1 resize-none rounded-xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none disabled:opacity-50"
         />
         <Button
           type="submit"
           disabled={disabled || !input.trim()}
-          className="h-11 w-11 shrink-0 rounded-xl bg-white p-0 text-zinc-700 hover:bg-zinc-200 disabled:opacity-50"
+          className="h-11 w-11 shrink-0 rounded-xl bg-zinc-800 p-0 text-white hover:bg-zinc-700 disabled:opacity-50"
         >
           <svg
             className="h-5 w-5"
