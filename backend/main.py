@@ -26,12 +26,12 @@ AZURE_ENDPOINT = os.getenv("AZURE_ANTHROPIC_URL")
 AZURE_KEY = os.getenv("AZURE_ANTHROPIC_KEY")
 DEPLOYMENT_NAME = "claude-sonnet-4-6"
 
-SYSTEM_PROMPT = """You are a data visualization expert. Given an Apollo GraphQL cache snapshot and a user question, generate a recharts JSX snippet.
+SYSTEM_PROMPT = """You are a data visualization expert. Given a JSON data payload and a user question, generate a recharts JSX snippet.
 
 CRITICAL RULES:
-- A variable called `data` is ALREADY defined and available at runtime. It is an Apollo cache object (NOT an array). USE IT DIRECTLY.
-- The cache has a `ROOT_QUERY` key containing query results. Each query result has `__data` (the actual data) and `__timestamp`.
-- You MUST extract the relevant array or object from the cache before charting. For example: `const programs = data.ROOT_QUERY["allProgramFirstTestNumber:..."].__data;`
+- A variable called `data` is ALREADY defined and available at runtime. It contains the FULL JSON payload (with pageData, apolloCache, etc.). USE IT DIRECTLY.
+- The payload has a `pageData.apolloCache` object where keys are GraphQL query strings and values are the query results.
+- Apollo cache values may be indexed objects (keys "0", "1", "2", ...) representing array-like data. Convert them to arrays with `Object.values(data.pageData.apolloCache["queryKey"])`.
 - NEVER define your own data arrays with hardcoded values. NEVER write `const chartData = [{...}, ...]`. Always derive from `data`.
 - Return ONLY a JSX code block (```jsx ... ```) followed by a brief explanation
 - Use recharts components: ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ScatterChart, Scatter, ComposedChart, RadialBarChart, RadialBar, ZAxis
@@ -39,7 +39,7 @@ CRITICAL RULES:
 - Use nice colors from this palette: #8884d8, #82ca9d, #ffc658, #ff7300, #0088fe, #00c49f, #ffbb28, #ff8042
 - Do NOT import anything — all components are available as globals
 - The JSX must be a single expression, OR variable declarations followed by a JSX expression in parentheses
-- When accessing cache keys that contain JSON parameters (e.g. `allProgramFirstTestNumber:{"input":{...}}`), use the EXACT key string provided in the schema description.
+- When accessing cache keys that contain JSON parameters (e.g. `failRateHistory({"input":{...}})`), use the EXACT key string provided in the data.
 
 CHART SELECTION GUIDE:
 - BarChart → comparing discrete categories
@@ -53,19 +53,18 @@ CHART SELECTION GUIDE:
 
 EXAMPLE extracting from cache and charting:
 ```jsx
-const queryKey = Object.keys(data.ROOT_QUERY).find(k => k.startsWith("allProgramFirstTestNumber"));
-const programs = queryKey ? data.ROOT_QUERY[queryKey].__data : [];
-const top10 = [...programs].sort((a, b) => b.passed - a.passed).slice(0, 10);
+const cacheKey = Object.keys(data.pageData.apolloCache).find(k => k.startsWith("failRateHistory"));
+const rawData = cacheKey ? data.pageData.apolloCache[cacheKey] : {};
+const chartData = Object.values(rawData).filter(d => d && typeof d === "object");
 
 (<ResponsiveContainer width="100%" height={400}>
-  <BarChart data={top10}>
+  <BarChart data={chartData}>
     <CartesianGrid strokeDasharray="3 3" />
-    <XAxis dataKey="programname" />
+    <XAxis dataKey="programyear" />
     <YAxis />
     <Tooltip />
     <Legend />
-    <Bar dataKey="passed" fill="#82ca9d" />
-    <Bar dataKey="failed" fill="#ff7300" />
+    <Bar dataKey="failRate" fill="#ff7300" name="Fail Rate" />
   </BarChart>
 </ResponsiveContainer>)
 ```
@@ -79,7 +78,7 @@ class MessageItem(BaseModel):
 
 class ChatRequest(BaseModel):
     question: str
-    data: dict
+    data: dict  # The full v2 JSON payload (pageData, apolloCache, etc.)
     messages: list[MessageItem] = []
 
 
@@ -116,35 +115,6 @@ Example response:
 """
 
 
-def build_schema_summary(data: dict) -> tuple[str, dict]:
-    """Extract schema description and sample data from Apollo cache."""
-    import json
-
-    root_query = data.get("ROOT_QUERY", {})
-    schema_lines = []
-    sample_data = {}
-    for key, value in root_query.items():
-        if key == "__typename":
-            continue
-        if isinstance(value, dict) and "__data" in value:
-            d = value["__data"]
-            if isinstance(d, list):
-                schema_lines.append(f'- `{key}`: array of {len(d)} items')
-                if d:
-                    schema_lines.append(f'  Fields: {list(d[0].keys()) if isinstance(d[0], dict) else "primitive"}')
-                    schema_lines.append(f'  Sample: {json.dumps(d[0], default=str)[:300]}')
-                    sample_data[key] = d[:2]
-            elif isinstance(d, dict):
-                schema_lines.append(f'- `{key}`: object with keys {list(d.keys())}')
-                sample_data[key] = d
-            else:
-                schema_lines.append(f'- `{key}`: {type(d).__name__} = {str(d)[:100]}')
-        elif isinstance(value, dict):
-            schema_lines.append(f'- `{key}`: object with keys {list(value.keys())}')
-
-    schema_description = "\n".join(schema_lines)
-    return schema_description, sample_data
-
 
 # Use a simple test endpoint to verify LLM connection
 @app.get("/api/test-llm")
@@ -177,15 +147,11 @@ def chat(req: ChatRequest):
 
     import json
 
-    schema_description, sample_data = build_schema_summary(req.data)
+    data_json = json.dumps(req.data, default=str)
 
-    user_message = f"""The `data` variable is an Apollo GraphQL cache object. Access data via `data.ROOT_QUERY["<queryKey>"].__data`.
+    user_message = f"""Here is the full JSON data payload. A variable called `data` containing this exact object is available at runtime.
 
-Available queries in ROOT_QUERY:
-{schema_description}
-
-Sample data (first 2 records per query):
-{json.dumps(sample_data, indent=2, default=str)[:3000]}
+{data_json}
 
 User question: {req.question}"""
 
@@ -235,13 +201,11 @@ def recommend(req: ChatRequest):
         return RecommendResponse(recommendations=[])
 
     try:
-        schema_description, sample_data = build_schema_summary(req.data)
+        data_json = json.dumps(req.data, default=str)
 
-        user_message = f"""Available queries in the data:
-{schema_description}
+        user_message = f"""Here is the full JSON data payload:
 
-Sample data:
-{json.dumps(sample_data, indent=2, default=str)[:2000]}
+{data_json}
 
 User question: {req.question}
 

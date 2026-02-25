@@ -11,7 +11,7 @@ import ChatSidebar from './ChatSidebar'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import rawDataFallback from '../../../rawData.json'
+import rawDataFallback from '../../../rawDataV2.json'
 
 export default function ChatPage() {
   const dispatch = useDispatch()
@@ -37,10 +37,15 @@ export default function ChatPage() {
 
   const data = getData()
 
+  // Extract default question from the v2 payload's messages array
+  const defaultQuestion =
+    (data as { messages?: { content?: string }[] }).messages?.[0]?.content ?? ''
+
   const lastUserQuestionRef = useRef<string>('')
 
   const generateChart = async (question: string, chartTypeHint: string | null) => {
     dispatch(setLoading(true))
+    const startTime = performance.now()
 
     const history = messages.map((m) => ({
       role: m.role === 'chartagent' ? 'assistant' : m.role,
@@ -63,18 +68,22 @@ export default function ChatPage() {
       }
 
       const body = await res.json()
+      const durationMs = Math.round(performance.now() - startTime)
       const agentMsg: Message = {
         id: crypto.randomUUID(),
         role: 'chartagent',
         content: body.text || '',
         jsx: body.jsx || undefined,
+        durationMs,
       }
       dispatch(addMessage(agentMsg))
     } catch (e) {
+      const durationMs = Math.round(performance.now() - startTime)
       const errorMsg: Message = {
         id: crypto.randomUUID(),
         role: 'chartagent',
         content: `Error: ${(e as Error).message}`,
+        durationMs,
       }
       dispatch(addMessage(errorMsg))
     } finally {
@@ -83,10 +92,13 @@ export default function ChatPage() {
   }
 
   const handleSend = async (content: string) => {
+    const question = content || defaultQuestion
+    if (!question) return
+
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content,
+      content: question,
     }
 
     if (!activeId) {
@@ -95,38 +107,8 @@ export default function ChatPage() {
       dispatch(addMessage(userMsg))
     }
 
-    lastUserQuestionRef.current = content
-    dispatch(setLoading(true))
-
-    // Step 1: Try to get recommendations
-    try {
-      const res = await fetch('/api/chat/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: content, data }),
-      })
-
-      if (res.ok) {
-        const body = await res.json()
-        if (body.recommendations && body.recommendations.length > 0) {
-          const recMsg: Message = {
-            id: crypto.randomUUID(),
-            role: 'chartagent',
-            content: 'I have a few chart type suggestions for your question:',
-            recommendations: body.recommendations,
-          }
-          dispatch(addMessage(recMsg))
-          dispatch(setLoading(false))
-          return // Wait for user to pick
-        }
-      }
-    } catch {
-      // Recommend failed — fall through to direct generation
-    }
-
-    // Fallback: generate chart directly
-    dispatch(setLoading(false))
-    await generateChart(content, null)
+    lastUserQuestionRef.current = question
+    await generateChart(question, null)
   }
 
   const handlePickRecommendation = async (chartType: string | null) => {

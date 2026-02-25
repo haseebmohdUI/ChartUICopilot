@@ -11,9 +11,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    const trimmed = input.trim()
-    if (!trimmed) return
-    onSend(trimmed)
+    onSend(input.trim())
     setInput('')
   }
 
@@ -41,7 +39,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         />
         <Button
           type="submit"
-          disabled={disabled || !input.trim()}
+          disabled={disabled}
           className="h-11 w-11 shrink-0 rounded-xl bg-zinc-800 p-0 text-white hover:bg-zinc-700 disabled:opacity-50"
         >
           <svg

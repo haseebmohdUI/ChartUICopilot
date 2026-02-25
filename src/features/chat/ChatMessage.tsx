@@ -159,6 +159,13 @@ export default function ChatMessage({
             </div>
           </ChartErrorBoundary>
         )}
+        {!isUser && message.durationMs != null && (
+          <p className="mt-2 text-xs text-zinc-400">
+            {message.durationMs >= 1000
+              ? `${(message.durationMs / 1000).toFixed(1)}s`
+              : `${message.durationMs}ms`}
+          </p>
+        )}
       </div>
     </div>
   )

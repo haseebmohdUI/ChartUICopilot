@@ -32,85 +32,69 @@ export function renderChart(
   let wrappedCode: string;
 
   if (hasDeclarations) {
-    // Find the boundary between declarations and the final JSX expression.
-    // The JSX block starts with either `(<` or just `<` at the top level,
-    // AFTER all const/let/var declarations are done.
-    // Strategy: find the last declaration statement's semicolon or end,
-    // then everything after is the JSX.
-
-    // Split by finding the opening ( or < that starts the JSX return block.
-    // We look for a line that starts with ( or < AND is NOT inside a declaration.
-    // Simpler: find the last `const|let|var` line, then find where its statement ends,
-    // everything after is JSX.
-
+    // Find the JSX expression at the end of the code by searching for
+    // the last top-level `(<` or `<ResponsiveContainer` pattern.
+    // This is more robust than tracking declaration boundaries.
     const lines = cleaned.split("\n");
 
-    // Find the last TOP-LEVEL const/let/var declaration.
-    // Track brace depth so we skip declarations nested inside arrow functions.
-    let lastDeclLine = -1;
-    let scanBrace = 0;
-    let scanParen = 0;
-    let scanBracket = 0;
+    let jsxStartLine = -1;
+    let depth = { brace: 0, paren: 0, bracket: 0 };
+
     for (let i = 0; i < lines.length; i++) {
-      // Check for top-level declaration BEFORE updating depths for this line
+      const trimmed = lines[i].trim();
+      // At top level, a line starting with `(` followed by `<` or directly `<`
+      // signals the start of the JSX return expression
       if (
-        scanBrace === 0 &&
-        scanParen === 0 &&
-        scanBracket === 0 &&
-        /^\s*(const|let|var)\s/.test(lines[i])
+        depth.brace === 0 &&
+        depth.paren === 0 &&
+        depth.bracket === 0 &&
+        (trimmed.match(/^\(\s*</) || trimmed.match(/^<\s*\w/))
       ) {
-        lastDeclLine = i;
+        jsxStartLine = i;
+        break; // First match from top that's at depth 0 after declarations
       }
       for (const ch of lines[i]) {
-        if (ch === "{") scanBrace++;
-        if (ch === "}") scanBrace--;
-        if (ch === "(") scanParen++;
-        if (ch === ")") scanParen--;
-        if (ch === "[") scanBracket++;
-        if (ch === "]") scanBracket--;
+        if (ch === "{") depth.brace++;
+        if (ch === "}") depth.brace--;
+        if (ch === "(") depth.paren++;
+        if (ch === ")") depth.paren--;
+        if (ch === "[") depth.bracket++;
+        if (ch === "]") depth.bracket--;
       }
     }
 
-    // Now find where that last top-level declaration ends
-    let declEndLine = lastDeclLine;
-    let braceDepth = 0;
-    let parenDepth = 0;
-    let bracketDepth = 0;
-    for (let i = lastDeclLine; i < lines.length; i++) {
-      for (const ch of lines[i]) {
-        if (ch === "{") braceDepth++;
-        if (ch === "}") braceDepth--;
-        if (ch === "(") parenDepth++;
-        if (ch === ")") parenDepth--;
-        if (ch === "[") bracketDepth++;
-        if (ch === "]") bracketDepth--;
-      }
-      // Declaration is complete when all brackets are balanced and line ends with ;
-      if (braceDepth <= 0 && parenDepth <= 0 && bracketDepth <= 0) {
-        const trimmed = lines[i].trim();
-        if (trimmed.endsWith(";") || trimmed.endsWith(");") || trimmed.endsWith("},") || trimmed.endsWith("}")) {
-          declEndLine = i;
-          break;
-        }
-      }
-    }
+    console.log("[renderChart] jsxStartLine:", jsxStartLine, "of", lines.length, "lines");
 
-    const declarationPart = lines.slice(0, declEndLine + 1).join("\n");
-    const jsxPart = lines.slice(declEndLine + 1).join("\n").trim();
-
-    if (jsxPart) {
-      // Remove wrapping parens if present: (\n<JSX>\n) -> <JSX>
+    if (jsxStartLine > 0) {
+      const declarationPart = lines.slice(0, jsxStartLine).join("\n");
+      const jsxPart = lines.slice(jsxStartLine).join("\n").trim();
+      console.log("[renderChart] declarationPart length:", declarationPart.length, "jsxPart length:", jsxPart.length);
       const unwrapped = jsxPart.replace(/^\(\s*/, "").replace(/\s*\)\s*;?\s*$/, "");
-      // If the JSX part already starts with "return", don't add another
       const returnPrefix = /^\s*return\s/.test(unwrapped) ? "" : "return ";
       wrappedCode = `(function() {
 ${declarationPart}
 ${returnPrefix}(${unwrapped});
 })()`;
     } else {
-      wrappedCode = `(function() {
+      // Could not find JSX split point — try to find JSX anywhere and add return
+      // Look for the last occurrence of (<ResponsiveContainer or <ResponsiveContainer
+      const jsxMatch = cleaned.match(/(\(\s*<ResponsiveContainer[\s\S]*$)/);
+      if (jsxMatch) {
+        const jsxIndex = cleaned.lastIndexOf(jsxMatch[1]);
+        const declarationPart = cleaned.substring(0, jsxIndex).trim();
+        const jsxPart = jsxMatch[1].trim();
+        const unwrapped = jsxPart.replace(/^\(\s*/, "").replace(/\s*\)\s*;?\s*$/, "");
+        wrappedCode = `(function() {
+${declarationPart}
+return (${unwrapped});
+})()`;
+      } else {
+        // Last resort — wrap entire code as IIFE
+        console.warn("[renderChart] Could not find JSX split point, wrapping entire code");
+        wrappedCode = `(function() {
 ${cleaned}
 })()`;
+      }
     }
   } else {
     wrappedCode = cleaned;

@@ -11,6 +11,7 @@ export interface Message {
   content: string
   jsx?: string
   recommendations?: ChartRecommendation[]
+  durationMs?: number
 }
 
 export interface Conversation {
