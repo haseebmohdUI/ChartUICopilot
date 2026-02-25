@@ -44,9 +44,12 @@ const chatSlice = createSlice({
   reducers: {
     startConversation(state, action: PayloadAction<Message>) {
       const now = new Date().toISOString()
+      const words = action.payload.content.trim().split(/\s+/)
       const title =
         action.payload.role === 'user'
-          ? action.payload.content.slice(0, 30)
+          ? words.length > 5
+            ? words.slice(0, 5).join(' ') + '...'
+            : words.join(' ')
           : 'New Chat'
       const conv: Conversation = {
         id: crypto.randomUUID(),

@@ -19,7 +19,15 @@ export default function ChatSidebar() {
   const activeId = useSelector((s: RootState) => s.chat.activeConversationId)
 
   return (
-    <aside className="flex h-screen w-[315px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-100">
+    <aside className="flex h-screen w-[280px] shrink-0 flex-col border-r border-zinc-200 bg-zinc-100">
+      {/* Branding */}
+      <div className="px-3 pt-4 pb-1 text-center">
+        <h1 className="text-2xl font-bold text-zinc-800">AHRI Analytics</h1>
+        <p className="text-md text-zinc-500">Chart Copilot (Beta)</p>
+      </div>
+
+      <Separator className="bg-zinc-200" />
+
       {/* New Chat button */}
       <div className="p-3">
         <Button
@@ -55,14 +63,21 @@ export default function ChatSidebar() {
             conversations.map((conv) => (
               <div
                 key={conv.id}
-                className={`group flex items-center overflow-hidden rounded-sm px-2.5 py-1.5 text-xs cursor-pointer ${
+                className={`group flex items-center overflow-hidden rounded-sm px-2.5 py-1.5 text-sm cursor-pointer ${
                   conv.id === activeId
                     ? 'bg-zinc-200 text-zinc-900'
                     : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'
                 }`}
                 onClick={() => dispatch(setActiveConversation(conv.id))}
               >
-                <span className="min-w-0 flex-1 truncate">{conv.title}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {(() => {
+                    const words = conv.title.trim().split(/\s+/)
+                    return words.length > 5
+                      ? words.slice(0, 5).join(' ') + '...'
+                      : conv.title
+                  })()}
+                </span>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
