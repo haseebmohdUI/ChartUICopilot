@@ -34,12 +34,22 @@ CRITICAL RULES:
 - You MUST extract the relevant array or object from the cache before charting. For example: `const programs = data.ROOT_QUERY["allProgramFirstTestNumber:..."].__data;`
 - NEVER define your own data arrays with hardcoded values. NEVER write `const chartData = [{...}, ...]`. Always derive from `data`.
 - Return ONLY a JSX code block (```jsx ... ```) followed by a brief explanation
-- Use recharts components: ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend
+- Use recharts components: ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ScatterChart, Scatter, ComposedChart, RadialBarChart, RadialBar, ZAxis
 - Wrap everything in <ResponsiveContainer width="100%" height={400}>
 - Use nice colors from this palette: #8884d8, #82ca9d, #ffc658, #ff7300, #0088fe, #00c49f, #ffbb28, #ff8042
 - Do NOT import anything — all components are available as globals
 - The JSX must be a single expression, OR variable declarations followed by a JSX expression in parentheses
 - When accessing cache keys that contain JSON parameters (e.g. `allProgramFirstTestNumber:{"input":{...}}`), use the EXACT key string provided in the schema description.
+
+CHART SELECTION GUIDE:
+- BarChart → comparing discrete categories
+- LineChart → trends over time
+- AreaChart → volume/magnitude over time (use Area with fill and stroke)
+- PieChart → part-of-whole (≤7 slices)
+- ScatterChart → correlation between two numeric variables (use Scatter with ZAxis for bubble size)
+- RadarChart → multi-attribute comparison of few items (wrap with PolarGrid, PolarAngleAxis, PolarRadiusAxis)
+- ComposedChart → mixing Bar + Line + Area in one chart
+- RadialBarChart → circular progress or single-metric comparison (use RadialBar)
 
 EXAMPLE extracting from cache and charting:
 ```jsx
@@ -78,6 +88,64 @@ class ChatResponse(BaseModel):
     jsx: str
 
 
+class ChartRecommendation(BaseModel):
+    chartType: str
+    reason: str
+
+
+class RecommendResponse(BaseModel):
+    recommendations: list[ChartRecommendation]
+
+
+RECOMMEND_PROMPT = """You are a data visualization advisor. Given a data schema and user question, suggest 2-3 chart types that would best visualize the answer.
+
+Return ONLY a JSON array of objects with "chartType" and "reason" keys. No markdown, no code fences, just the JSON array.
+
+Chart types to choose from:
+- BarChart: comparing discrete categories
+- LineChart: trends over time
+- AreaChart: volume/magnitude over time
+- PieChart: part-of-whole (≤7 slices)
+- ScatterChart: correlation between two numeric variables
+- RadarChart: multi-attribute comparison of few items
+- ComposedChart: mixing Bar + Line + Area
+- RadialBarChart: circular progress/single-metric comparison
+
+Example response:
+[{"chartType": "BarChart", "reason": "Best for comparing values across categories"}, {"chartType": "PieChart", "reason": "Shows proportion of each category in the whole"}]
+"""
+
+
+def build_schema_summary(data: dict) -> tuple[str, dict]:
+    """Extract schema description and sample data from Apollo cache."""
+    import json
+
+    root_query = data.get("ROOT_QUERY", {})
+    schema_lines = []
+    sample_data = {}
+    for key, value in root_query.items():
+        if key == "__typename":
+            continue
+        if isinstance(value, dict) and "__data" in value:
+            d = value["__data"]
+            if isinstance(d, list):
+                schema_lines.append(f'- `{key}`: array of {len(d)} items')
+                if d:
+                    schema_lines.append(f'  Fields: {list(d[0].keys()) if isinstance(d[0], dict) else "primitive"}')
+                    schema_lines.append(f'  Sample: {json.dumps(d[0], default=str)[:300]}')
+                    sample_data[key] = d[:2]
+            elif isinstance(d, dict):
+                schema_lines.append(f'- `{key}`: object with keys {list(d.keys())}')
+                sample_data[key] = d
+            else:
+                schema_lines.append(f'- `{key}`: {type(d).__name__} = {str(d)[:100]}')
+        elif isinstance(value, dict):
+            schema_lines.append(f'- `{key}`: object with keys {list(value.keys())}')
+
+    schema_description = "\n".join(schema_lines)
+    return schema_description, sample_data
+
+
 # Use a simple test endpoint to verify LLM connection
 @app.get("/api/test-llm")
 def test_llm():
@@ -109,30 +177,7 @@ def chat(req: ChatRequest):
 
     import json
 
-    # Build a schema summary of the Apollo cache for the LLM
-    root_query = req.data.get("ROOT_QUERY", {})
-    schema_lines = []
-    sample_data = {}
-    for key, value in root_query.items():
-        if key == "__typename":
-            continue
-        if isinstance(value, dict) and "__data" in value:
-            d = value["__data"]
-            if isinstance(d, list):
-                schema_lines.append(f'- `{key}`: array of {len(d)} items')
-                if d:
-                    schema_lines.append(f'  Fields: {list(d[0].keys()) if isinstance(d[0], dict) else "primitive"}')
-                    schema_lines.append(f'  Sample: {json.dumps(d[0], default=str)[:300]}')
-                    sample_data[key] = d[:2]
-            elif isinstance(d, dict):
-                schema_lines.append(f'- `{key}`: object with keys {list(d.keys())}')
-                sample_data[key] = d
-            else:
-                schema_lines.append(f'- `{key}`: {type(d).__name__} = {str(d)[:100]}')
-        elif isinstance(value, dict):
-            schema_lines.append(f'- `{key}`: object with keys {list(value.keys())}')
-
-    schema_description = "\n".join(schema_lines)
+    schema_description, sample_data = build_schema_summary(req.data)
 
     user_message = f"""The `data` variable is an Apollo GraphQL cache object. Access data via `data.ROOT_QUERY["<queryKey>"].__data`.
 
@@ -179,3 +224,47 @@ User question: {req.question}"""
             text = full_text[:match.start()].strip()
 
     return ChatResponse(text=text, jsx=jsx)
+
+
+@app.post("/api/chat/recommend", response_model=RecommendResponse)
+def recommend(req: ChatRequest):
+    from anthropic import AnthropicFoundry
+    import json
+
+    if not AZURE_ENDPOINT or not AZURE_KEY:
+        return RecommendResponse(recommendations=[])
+
+    try:
+        schema_description, sample_data = build_schema_summary(req.data)
+
+        user_message = f"""Available queries in the data:
+{schema_description}
+
+Sample data:
+{json.dumps(sample_data, indent=2, default=str)[:2000]}
+
+User question: {req.question}
+
+Suggest 2-3 chart types as a JSON array."""
+
+        client = AnthropicFoundry(
+            api_key=AZURE_KEY,
+            base_url=AZURE_ENDPOINT,
+        )
+
+        response = client.messages.create(
+            model=DEPLOYMENT_NAME,
+            max_tokens=256,
+            system=RECOMMEND_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        raw = response.content[0].text.strip()
+        parsed = json.loads(raw)
+        recommendations = [
+            ChartRecommendation(chartType=item["chartType"], reason=item["reason"])
+            for item in parsed
+        ]
+        return RecommendResponse(recommendations=recommendations)
+    except Exception:
+        return RecommendResponse(recommendations=[])

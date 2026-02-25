@@ -3,8 +3,58 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import ReactMarkdown from 'react-markdown'
 import { renderChart } from '@/lib/renderChart'
 
-import type { Message } from './chatSlice'
+import type { Message, ChartRecommendation } from './chatSlice'
 export type { Message } from './chatSlice'
+
+const CHART_ICONS: Record<string, string> = {
+  BarChart: '📊',
+  LineChart: '📈',
+  AreaChart: '📉',
+  PieChart: '🥧',
+  ScatterChart: '🔵',
+  RadarChart: '🕸️',
+  ComposedChart: '📊',
+  RadialBarChart: '🎯',
+}
+
+function RecommendationButtons({
+  recommendations,
+  onPick,
+  disabled,
+}: {
+  recommendations: ChartRecommendation[]
+  onPick?: (chartType: string | null) => void
+  disabled: boolean
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Suggested chart types</p>
+      <div className="flex flex-wrap gap-2">
+        {recommendations.map((rec) => (
+          <button
+            key={rec.chartType}
+            disabled={disabled}
+            onClick={() => onPick?.(rec.chartType)}
+            className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-left text-sm transition-colors hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span>{CHART_ICONS[rec.chartType] ?? '📊'}</span>
+            <span>
+              <span className="font-medium text-zinc-800">{rec.chartType}</span>
+              <span className="ml-1 text-zinc-500">— {rec.reason}</span>
+            </span>
+          </button>
+        ))}
+        <button
+          disabled={disabled}
+          onClick={() => onPick?.(null)}
+          className="rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-500 transition-colors hover:border-blue-400 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Let AI decide
+        </button>
+      </div>
+    </div>
+  )
+}
 
 class ChartErrorBoundary extends Component<
   { children: ReactNode },
@@ -60,9 +110,13 @@ function ChartRenderer({
 export default function ChatMessage({
   message,
   data,
+  onPickRecommendation,
+  isLastMessage,
 }: {
   message: Message
   data: Record<string, unknown>
+  onPickRecommendation?: (chartType: string | null) => void
+  isLastMessage?: boolean
 }) {
   const isUser = message.role === 'user'
 
@@ -90,6 +144,13 @@ export default function ChatMessage({
           <div className="prose prose-sm max-w-none">
             <ReactMarkdown>{message.content}</ReactMarkdown>
           </div>
+        )}
+        {message.recommendations && message.recommendations.length > 0 && (
+          <RecommendationButtons
+            recommendations={message.recommendations}
+            onPick={onPickRecommendation}
+            disabled={!isLastMessage}
+          />
         )}
         {message.jsx && (
           <ChartErrorBoundary>

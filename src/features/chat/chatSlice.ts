@@ -1,10 +1,16 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 
+export interface ChartRecommendation {
+  chartType: string
+  reason: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'chartagent'
   content: string
   jsx?: string
+  recommendations?: ChartRecommendation[]
 }
 
 export interface Conversation {

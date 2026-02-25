@@ -37,33 +37,25 @@ export default function ChatPage() {
 
   const data = getData()
 
-  const handleSend = async (content: string) => {
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-    }
+  const lastUserQuestionRef = useRef<string>('')
 
-    // If no active conversation, start a new one; otherwise append
-    if (!activeId) {
-      dispatch(startConversation(userMsg))
-    } else {
-      dispatch(addMessage(userMsg))
-    }
-
+  const generateChart = async (question: string, chartTypeHint: string | null) => {
     dispatch(setLoading(true))
 
-    // Build history for the backend (exclude jsx, map chartagent → assistant)
     const history = messages.map((m) => ({
       role: m.role === 'chartagent' ? 'assistant' : m.role,
       content: m.content,
     }))
 
+    const finalQuestion = chartTypeHint
+      ? `${question} Use a ${chartTypeHint}.`
+      : question
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: content, data, messages: history }),
+        body: JSON.stringify({ question: finalQuestion, data, messages: history }),
       })
 
       if (!res.ok) {
@@ -88,6 +80,59 @@ export default function ChatPage() {
     } finally {
       dispatch(setLoading(false))
     }
+  }
+
+  const handleSend = async (content: string) => {
+    const userMsg: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content,
+    }
+
+    if (!activeId) {
+      dispatch(startConversation(userMsg))
+    } else {
+      dispatch(addMessage(userMsg))
+    }
+
+    lastUserQuestionRef.current = content
+    dispatch(setLoading(true))
+
+    // Step 1: Try to get recommendations
+    try {
+      const res = await fetch('/api/chat/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: content, data }),
+      })
+
+      if (res.ok) {
+        const body = await res.json()
+        if (body.recommendations && body.recommendations.length > 0) {
+          const recMsg: Message = {
+            id: crypto.randomUUID(),
+            role: 'chartagent',
+            content: 'I have a few chart type suggestions for your question:',
+            recommendations: body.recommendations,
+          }
+          dispatch(addMessage(recMsg))
+          dispatch(setLoading(false))
+          return // Wait for user to pick
+        }
+      }
+    } catch {
+      // Recommend failed — fall through to direct generation
+    }
+
+    // Fallback: generate chart directly
+    dispatch(setLoading(false))
+    await generateChart(content, null)
+  }
+
+  const handlePickRecommendation = async (chartType: string | null) => {
+    const question = lastUserQuestionRef.current
+    if (!question) return
+    await generateChart(question, chartType)
   }
 
   useEffect(() => {
@@ -129,8 +174,14 @@ export default function ChatPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                {messages.map((msg) => (
-                  <ChatMessage key={msg.id} message={msg} data={data} />
+                {messages.map((msg, idx) => (
+                  <ChatMessage
+                    key={msg.id}
+                    message={msg}
+                    data={data}
+                    onPickRecommendation={handlePickRecommendation}
+                    isLastMessage={idx === messages.length - 1}
+                  />
                 ))}
                 {loading && (
                   <div className="flex gap-3">
