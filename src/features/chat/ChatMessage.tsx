@@ -1,4 +1,4 @@
-import { Component, useMemo, type ReactNode } from 'react'
+import { Component, useMemo, useEffect, useRef, type ReactNode } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import ReactMarkdown from 'react-markdown'
 import { renderChart } from '@/lib/renderChart'
@@ -81,20 +81,30 @@ class ChartErrorBoundary extends Component<
 function ChartRenderer({
   jsx,
   data,
+  onChartData,
 }: {
   jsx: string
   data: Record<string, unknown>
+  onChartData?: (chartData: Record<string, unknown>[]) => void
 }) {
+  const sentRef = useRef(false)
   const result = useMemo(() => {
     try {
-      const el = renderChart(jsx, data)
-      return { element: el, error: null }
+      const res = renderChart(jsx, data)
+      return { element: res.element, chartData: res.chartData, error: null }
     } catch (e) {
       const msg = (e as Error).message
       console.error('[ChartRenderer] Error:', msg)
-      return { element: null, error: msg }
+      return { element: null, chartData: null, error: msg }
     }
   }, [jsx, data])
+
+  useEffect(() => {
+    if (result.chartData && onChartData && !sentRef.current) {
+      sentRef.current = true
+      onChartData(result.chartData)
+    }
+  }, [result.chartData, onChartData])
 
   if (result.error) {
     return (
@@ -111,11 +121,13 @@ export default function ChatMessage({
   message,
   data,
   onPickRecommendation,
+  onChartData,
   isLastMessage,
 }: {
   message: Message
   data: Record<string, unknown>
   onPickRecommendation?: (chartType: string | null) => void
+  onChartData?: (messageId: string, chartData: Record<string, unknown>[]) => void
   isLastMessage?: boolean
 }) {
   const isUser = message.role === 'user'
@@ -155,7 +167,11 @@ export default function ChatMessage({
         {message.jsx && (
           <ChartErrorBoundary>
             <div className="mt-3 rounded-lg bg-white p-4" style={{ width: '100%', minHeight: 420 }}>
-              <ChartRenderer jsx={message.jsx} data={data} />
+              <ChartRenderer
+                jsx={message.jsx}
+                data={data}
+                onChartData={onChartData ? (cd) => onChartData(message.id, cd) : undefined}
+              />
             </div>
           </ChartErrorBoundary>
         )}

@@ -33,10 +33,14 @@ CRITICAL RULES:
 - The payload has a `pageData.apolloCache` object where keys are GraphQL query strings and values are the query results.
 - Apollo cache values may be indexed objects (keys "0", "1", "2", ...) representing array-like data. Convert them to arrays with `Object.values(data.pageData.apolloCache["queryKey"])`.
 - NEVER define your own data arrays with hardcoded values. NEVER write `const chartData = [{...}, ...]`. Always derive from `data`.
-- Return ONLY a JSX code block (```jsx ... ```) followed by a brief explanation
+- Return ONLY a JSX code block (```jsx ... ```). Do NOT include any text explanation — the summary will be generated separately from the computed data.
+- IMPORTANT: Always name your final chart-ready array variable `chartData`. This is required so the runtime can extract the computed values for accurate text summaries.
 - Use recharts components: ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ScatterChart, Scatter, ComposedChart, RadialBarChart, RadialBar, ZAxis
 - Wrap everything in <ResponsiveContainer width="100%" height={400}>
 - Use nice colors from this palette: #8884d8, #82ca9d, #ffc658, #ff7300, #0088fe, #00c49f, #ffbb28, #ff8042
+- For BarCharts comparing many categories (>8 items), use `layout="vertical"` with `<YAxis dataKey="name" type="category" width={80} />` and `<XAxis type="number" />` so labels don't overlap. Sort data descending so highest values are at the top.
+- For BarCharts with few categories (≤8), use the default horizontal layout with `<XAxis dataKey="name" angle={-30} textAnchor="end" height={60} />` if names are long.
+- Always increase the ResponsiveContainer height for vertical bar charts: `height={Math.max(400, chartData.length * 30)}`
 - Do NOT import anything — all components are available as globals
 - The JSX must be a single expression, OR variable declarations followed by a JSX expression in parentheses
 - When accessing cache keys that contain JSON parameters (e.g. `failRateHistory({"input":{...}})`), use the EXACT key string provided in the data.
@@ -51,7 +55,7 @@ CHART SELECTION GUIDE:
 - ComposedChart → mixing Bar + Line + Area in one chart
 - RadialBarChart → circular progress or single-metric comparison (use RadialBar)
 
-EXAMPLE extracting from cache and charting:
+EXAMPLE extracting from cache and charting (note: final array MUST be called `chartData`):
 ```jsx
 const cacheKey = Object.keys(data.pageData.apolloCache).find(k => k.startsWith("failRateHistory"));
 const rawData = cacheKey ? data.pageData.apolloCache[cacheKey] : {};
@@ -85,6 +89,28 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     text: str
     jsx: str
+
+
+SUMMARIZE_PROMPT = """You are a data analyst writing an engaging insight summary. You are given the EXACT computed data that a chart is displaying, along with the user's original question.
+
+Write a well-formatted markdown summary that answers the user's question using ONLY the provided computed data. Be precise — this data is the ground truth.
+
+Formatting rules:
+- Start with a short **bold heading** that captures the key insight (e.g. "**VFD Leads in Failure Rates**")
+- Use **bold** for program names, key values, and important numbers
+- Use bullet points or numbered lists to highlight top items (top 3-5)
+- Add a brief closing sentence with an overall takeaway
+- Keep it concise but visually scannable — not a wall of text
+- Use percentage formatting where appropriate (e.g. "**18.7%**")"""
+
+
+class SummarizeRequest(BaseModel):
+    question: str
+    chartData: list[dict]
+
+
+class SummarizeResponse(BaseModel):
+    text: str
 
 
 class ChartRecommendation(BaseModel):
@@ -232,3 +258,38 @@ Suggest 2-3 chart types as a JSON array."""
         return RecommendResponse(recommendations=recommendations)
     except Exception:
         return RecommendResponse(recommendations=[])
+
+
+@app.post("/api/chat/summarize", response_model=SummarizeResponse)
+def summarize(req: SummarizeRequest):
+    from anthropic import AnthropicFoundry
+    import json
+
+    if not AZURE_ENDPOINT or not AZURE_KEY:
+        return SummarizeResponse(text="")
+
+    try:
+        chart_json = json.dumps(req.chartData, default=str)
+
+        user_message = f"""User question: {req.question}
+
+Here is the exact computed data the chart is displaying (this is ground truth):
+{chart_json}
+
+Write an accurate summary answering the user's question based on this data."""
+
+        client = AnthropicFoundry(
+            api_key=AZURE_KEY,
+            base_url=AZURE_ENDPOINT,
+        )
+
+        response = client.messages.create(
+            model=DEPLOYMENT_NAME,
+            max_tokens=512,
+            system=SUMMARIZE_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+
+        return SummarizeResponse(text=response.content[0].text.strip())
+    except Exception:
+        return SummarizeResponse(text="")

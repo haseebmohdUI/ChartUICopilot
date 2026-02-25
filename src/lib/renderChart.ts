@@ -12,10 +12,15 @@ declare global {
   }
 }
 
+export interface RenderResult {
+  element: React.ReactElement | null;
+  chartData: Record<string, unknown>[] | null;
+}
+
 export function renderChart(
   jsxString: string,
   data: Record<string, unknown>
-): React.ReactElement | null {
+): RenderResult {
   if (!window.Babel) {
     throw new Error("Babel standalone not loaded");
   }
@@ -70,14 +75,13 @@ export function renderChart(
       const jsxPart = lines.slice(jsxStartLine).join("\n").trim();
       console.log("[renderChart] declarationPart length:", declarationPart.length, "jsxPart length:", jsxPart.length);
       const unwrapped = jsxPart.replace(/^\(\s*/, "").replace(/\s*\)\s*;?\s*$/, "");
-      const returnPrefix = /^\s*return\s/.test(unwrapped) ? "" : "return ";
       wrappedCode = `(function() {
 ${declarationPart}
-${returnPrefix}(${unwrapped});
+var __element = (${unwrapped});
+return { element: __element, chartData: typeof chartData !== 'undefined' ? chartData : null };
 })()`;
     } else {
       // Could not find JSX split point — try to find JSX anywhere and add return
-      // Look for the last occurrence of (<ResponsiveContainer or <ResponsiveContainer
       const jsxMatch = cleaned.match(/(\(\s*<ResponsiveContainer[\s\S]*$)/);
       if (jsxMatch) {
         const jsxIndex = cleaned.lastIndexOf(jsxMatch[1]);
@@ -86,7 +90,8 @@ ${returnPrefix}(${unwrapped});
         const unwrapped = jsxPart.replace(/^\(\s*/, "").replace(/\s*\)\s*;?\s*$/, "");
         wrappedCode = `(function() {
 ${declarationPart}
-return (${unwrapped});
+var __element = (${unwrapped});
+return { element: __element, chartData: typeof chartData !== 'undefined' ? chartData : null };
 })()`;
       } else {
         // Last resort — wrap entire code as IIFE
@@ -120,9 +125,14 @@ ${cleaned}
   }
 
   const fn = new Function("React", "data", ...componentNames, body);
-  const result = fn(React, data, ...componentValues);
+  const raw = fn(React, data, ...componentValues);
 
-  console.log("[renderChart] Result type:", typeof result, result ? "ok" : "empty");
+  // Handle both return shapes: { element, chartData } or plain React element
+  if (raw && typeof raw === "object" && "element" in raw) {
+    console.log("[renderChart] Got element + chartData:", raw.chartData ? `${raw.chartData.length} items` : "null");
+    return { element: raw.element, chartData: raw.chartData };
+  }
 
-  return result;
+  console.log("[renderChart] Result type:", typeof raw, raw ? "ok" : "empty");
+  return { element: raw, chartData: null };
 }

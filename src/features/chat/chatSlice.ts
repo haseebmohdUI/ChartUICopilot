@@ -77,6 +77,20 @@ const chatSlice = createSlice({
         conv.updatedAt = new Date().toISOString()
       }
     },
+    updateMessageContent(
+      state,
+      action: PayloadAction<{ messageId: string; content: string }>,
+    ) {
+      const conv = state.conversations.find(
+        (c) => c.id === state.activeConversationId,
+      )
+      if (conv) {
+        const msg = conv.messages.find((m) => m.id === action.payload.messageId)
+        if (msg) {
+          msg.content = action.payload.content
+        }
+      }
+    },
     setActiveConversation(state, action: PayloadAction<string | null>) {
       state.activeConversationId = action.payload
     },
@@ -100,6 +114,7 @@ const chatSlice = createSlice({
 export const {
   startConversation,
   addMessage,
+  updateMessageContent,
   setActiveConversation,
   setLoading,
   deleteConversation,

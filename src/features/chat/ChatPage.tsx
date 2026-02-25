@@ -4,6 +4,7 @@ import type { RootState } from '@/app/store'
 import {
   startConversation,
   addMessage,
+  updateMessageContent,
   setLoading,
   type Message,
 } from './chatSlice'
@@ -117,6 +118,30 @@ export default function ChatPage() {
     await generateChart(question, chartType)
   }
 
+  const handleChartData = async (
+    messageId: string,
+    chartData: Record<string, unknown>[],
+  ) => {
+    const question = lastUserQuestionRef.current
+    if (!question || !chartData.length) return
+
+    try {
+      const res = await fetch('/api/chat/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, chartData }),
+      })
+      if (res.ok) {
+        const body = await res.json()
+        if (body.text) {
+          dispatch(updateMessageContent({ messageId, content: body.text }))
+        }
+      }
+    } catch {
+      // Summarize failed — keep whatever text the chart message already has
+    }
+  }
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -162,6 +187,7 @@ export default function ChatPage() {
                     message={msg}
                     data={data}
                     onPickRecommendation={handlePickRecommendation}
+                    onChartData={handleChartData}
                     isLastMessage={idx === messages.length - 1}
                   />
                 ))}
